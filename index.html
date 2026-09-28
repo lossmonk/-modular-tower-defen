@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Modular Tower Defense</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#071018;color:#dce8ef;font-family:Arial,sans-serif;overflow:hidden}
+#top{height:64px;background:#0d1821;border-bottom:1px solid #263744;display:flex;align-items:center;justify-content:space-around;font-size:14px}
+.stat{text-align:center}.value{font-size:20px;font-weight:bold;color:#fff}
+#game{display:block;width:100%;height:calc(100vh - 144px);background:#09151d}
+#bar{height:80px;background:#0d1821;border-top:1px solid #263744;display:flex;gap:8px;padding:8px;overflow-x:auto}
+button{background:#152530;border:1px solid #38505e;color:#dce8ef;border-radius:10px;padding:10px 13px;white-space:nowrap;font-size:13px}
+button:active{transform:scale(.96)}
+button.selected{border-color:#64d8ff;background:#173848}
+#hint{position:absolute;left:50%;top:74px;transform:translateX(-50%);background:#10212b;padding:8px 12px;border-radius:8px;font-size:12px;opacity:.9;pointer-events:none}
+#panel{position:absolute;right:10px;top:76px;background:#0d1b24;border:1px solid #39505d;border-radius:12px;padding:12px;width:190px;display:none}
+#panel h3{margin:0 0 8px;font-size:16px}
+#panel p{font-size:12px;margin:5px 0;color:#9db0bb}
+#panel button{width:100%;margin-top:8px}
+</style>
+</head>
+<body>
+
+<div id="top">
+ <div class="stat">CREDITS<div id="credits" class="value">500</div></div>
+ <div class="stat">WAVE<div id="wave" class="value">0</div></div>
+ <div class="stat">BASE<div id="base" class="value">100</div></div>
+ <div class="stat">ENEMIES<div id="enemies" class="value">0</div></div>
+</div>
+
+<canvas id="game"></canvas>
+<div id="hint">Выбери модуль снизу и нажми на поле</div>
+
+<div id="panel">
+ <h3 id="pname">Башня</h3>
+ <p id="pinfo"></p>
+ <button onclick="upgradeTower()">УЛУЧШИТЬ</button>
+ <button onclick="closePanel()">ЗАКРЫТЬ</button>
+</div>
+
+<div id="bar">
+ <button id="core" onclick="selectBuild('core')">ЯДРО · 150</button>
+ <button id="cannon" onclick="selectBuild('cannon')">ПУШКА · 100</button>
+ <button id="rapid" onclick="selectBuild('rapid')">РОТОР · 175</button>
+ <button id="power" onclick="selectBuild('power')">ЭНЕРГИЯ · 125</button>
+ <button id="armor" onclick="selectBuild('armor')">БРОНЯ · 100</button>
+ <button onclick="startWave()">НАЧАТЬ ВОЛНУ</button>
+</div>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+let W,H;
+function resize(){
+ W=canvas.width=window.innerWidth;
+ H=canvas.height=window.innerHeight-144;
+}
+resize();window.addEventListener("resize",resize);
+
+let credits=500,baseHP=100,wave=0;
+let selected="core",towers=[],enemies=[],shots=[],waveRunning=false;
+let selectedTower=null;
+
+const prices={core:150,cannon:100,rapid:175,power:125,armor:100};
+
+function updateUI(){
+ document.getElementById("credits").textContent=Math.floor(credits);
+ document.getElementById("wave").textContent=wave;
+ document.getElementById("base").textContent=Math.max(0,Math.floor(baseHP));
+ document.getElementById("enemies").textContent=enemies.length;
+}
+
+function selectBuild(type){
+ selected=type;
+ document.querySelectorAll("#bar button").forEach(b=>b.classList.remove("selected"));
+ document.getElementById(type)?.classList.add("selected");
+}
+
+function startWave(){
+ if(waveRunning)return;
+ wave++;
+ waveRunning=true;
+ const count=6+wave*3;
+ for(let i=0;i<count;i++){
+   setTimeout(()=>spawnEnemy(),i*450);
+ }
+ setTimeout(()=>waveRunning=false,count*450+500);
+ updateUI();
+}
+
+function spawnEnemy(){
+ const type=Math.random();
+ let e;
+ if(type<.2)e={x:-20,y:80+Math.random()*(H-130),hp:260,max:260,speed:25,r:14,reward:70};
+ else if(type<.5)e={x:-20,y:80+Math.random()*(H-130),hp:70,max:70,speed:75,r:9,reward:30};
+ else e={x:-20,y:80+Math.random()*(H-130),hp:120,max:120,speed:45,r:11,reward:25};
+ enemies.push(e);
+}
+
+function place(x,y){
+ if(selected==="core"){
+   if(credits<prices.core)return;
+   credits-=prices.core;
+   towers.push({x,y,type:"core",level:1,modules:[]});
+ }
+ else{
+   let t=towers.find(t=>Math.hypot(t.x-x,t.y-y)<35);
+   if(!t)return;
+   if(credits<prices[selected])return;
+   credits-=prices[selected];
+   if(!t.modules.includes(selected))t.modules.push(selected);
+ }
+ updateUI();
+}
+
+canvas.addEventListener("pointerdown",e=>{
+ const r=canvas.getBoundingClientRect();
+ const x=e.clientX-r.left,y=e.clientY-r.top;
+
+ let t=towers.find(t=>Math.hypot(t.x-x,t.y-y)<25);
+ if(t){
+   selectedTower=t;
+   showPanel(t);
+   return;
+ }
+ place(x,y);
+});
+
+function showPanel(t){
+ selectedTower=t;
+ document.getElementById("panel").style.display="block";
+ document.getElementById("pname").textContent="МОДУЛЬНАЯ БАШНЯ";
+ document.getElementById("pinfo").textContent=
+ "Уровень "+t.level+" · Модули: "+(t.modules.join(", ")||"только ядро");
+}
+function closePanel(){
+ selectedTower=null;
+ document.getElementById("panel").style.display="none";
+}
+
+function upgradeTower(){
+ if(!selectedTower)return;
+ const cost=100*selectedTower.level;
+ if(credits<cost)return;
+ credits-=cost;
+ selectedTower.level++;
+ showPanel(selectedTower);
+ updateUI();
+}
+
+function distance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+
+function towerStats(t){
+ let damage=12*t.level,rate=1,range=150;
+ if(t.modules.includes("cannon"))damage+=18;
+ if(t.modules.includes("rapid")){damage+=7;rate=.35}
+ if(t.modules.includes("power")){damage*=1.5;range+=40}
+ if(t.modules.includes("armor")){}
+ return {damage,rate,range};
+}
+
+let last=performance.now();
+
+function loop(now){
+ const dt=Math.min(.05,(now-last)/1000);
+ last=now;
+ update(dt);
+ draw();
+ requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+function update(dt){
+ for(const e of enemies){
+   e.x+=e.speed*dt;
+   if(e.x>W-25){
+     e.dead=true;
+     baseHP-=10;
+   }
+ }
+
+ for(const t of towers){
+   t.cool=(t.cool||0)-dt;
+   const s=towerStats(t);
+   if(t.cool<=0){
+     let target=null,bd=Infinity;
+     for(const e of enemies){
+       const d=distance(t,e);
+       if(d<s.range&&d<bd){target=e;bd=d}
+     }
+     if(target){
+       shots.push({x:t.x,y:t.y,target,damage:s.damage});
+       t.cool=s.rate;
+     }
+   }
+ }
+
+ for(const sh of shots){
+   if(!sh.target||sh.target.dead){sh.dead=true;continue}
+   const dx=sh.target.x-sh.x,dy=sh.target.y-sh.y;
+   const d=Math.hypot(dx,dy);
+   const sp=500*dt;
+   if(d<sp){
+     sh.target.hp-=sh.damage;
+     sh.dead=true;
+     if(sh.target.hp<=0){
+       sh.target.dead=true;
+       credits+=sh.target.reward;
+     }
+   }else{
+     sh.x+=dx/d*sp;
+     sh.y+=dy/d*sp;
+   }
+ }
+
+ enemies=enemies.filter(e=>!e.dead);
+ shots=shots.filter(s=>!s.dead);
+
+ if(baseHP<=0){
+   baseHP=0;
+   waveRunning=false;
+ }
+
+ updateUI();
+}
+
+function draw(){
+ ctx.clearRect(0,0,W,H);
+
+ // background grid
+ ctx.strokeStyle="#132832";
+ ctx.lineWidth=1;
+ for(let x=0;x<W;x+=40){
+   ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
+ }
+ for(let y=0;y<H;y+=40){
+   ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+ }
+
+ // base
+ ctx.fillStyle="#173b4a";
+ ctx.fillRect(W-45,0,45,H);
+ ctx.fillStyle="#64d8ff";
+ ctx.fillRect(W-45,H/2-50,28,100);
+
+ // enemies
+ for(const e of enemies){
+   ctx.beginPath();
+   ctx.arc(e.x,e.y,e.r,0,Math.PI*2);
+   ctx.fillStyle=e.r>12?"#d46b
